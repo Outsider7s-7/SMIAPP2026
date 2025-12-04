@@ -1,0 +1,960 @@
+﻿@page "/"
+@using SMIAPP2026.Shared
+@inject HttpClient Http
+@inject NavigationManager NavigationManager
+@inject DatabaseService DbService
+@inject HttpClient HttpClient
+@inject IJSRuntime JSRuntime
+@inject IJSRuntime JS
+@using Microsoft.Maui.Media;
+
+@using System.Text.Json;
+@using System.Text;
+@using Microsoft.Maui.Storage;
+@using System;
+@using System.Text.Json.Serialization;
+
+<div class="AllApp">
+    @if (isLoading)
+    {
+        <div class="loading-spinner">
+            <p>Loading...</p>
+        </div>
+    }
+    else if (showStations)
+    {
+        <!-- Display stations list -->
+        <section class="region-container" style="display:@(SelectedStation == null ? "block" : "none")">
+            <button class="btn_back" @onclick="() => showStations = false">Back</button>
+            <h3 class="titlez">@selectedRegion</h3>
+            <div class="card-container">
+                @if (stations?.Any() == true)
+                {
+                    @foreach (var station in stations)
+                    {
+                        <div class="card">
+                            <div class="card-header">
+                                <p>@station.RaisonSociale</p>
+                            </div>
+                            <img src="@($"https://vem.smimaroc.com/Content/Documents/images/tiers/{station.Photo}")"
+                                 alt="Station Photo"
+                                 class="station-photo"
+                                 onerror="this.src='https://example.com/default-photo.jpg';" />
+                            <div class="card-body">
+
+                                <button class="btn_stt" @onclick="() => ShowStationDetails(station)">
+                                    Capture
+                                </button>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p>No stations available for this region.</p>
+                }
+            </div>
+        </section>
+        <!-- Selected station details ---------------------------------------------- capture photos page--------------------------------------------------------- -->
+        @if (SelectedStation != null)
+        {
+            <div class="CapturePage">
+                <!-- Button to return to the station list -->
+                <button class="btn_back" @onclick="() => SelectedStation = null">back</button>
+                @*             <p class="@StatusClass">@StatusMessage</p>
+ *@
+                <!-- Details of the selected station -->
+                <div class="selected-station-details">
+                    <h2 class="station-header">Détails de la Station</h2>
+                    <div class="tabs">
+                        <ul class="tab-list">
+                            <li class="tab" data-tab="name" onclick="switchTab('name')">Nom</li>
+                            <li class="tab" data-tab="city" onclick="switchTab('city')">Ville</li>
+                            <li class="tab active" data-tab="gps" onclick="switchTab('gps')">GPS</li>
+                            <li class="tab" data-tab="region" onclick="switchTab('region')">Région</li>
+                        </ul>
+                        <div class="tab-content">
+                            <div class="tab-pane" id="name">
+                                <p><strong>Nom:</strong> @(SelectedStation?.RaisonSociale ?? "Non disponible")</p>
+                                @if (SelectedStation?.Photo != null)
+                                {
+                                    <img style="width: 100%; height: 300px; border: 0;"
+                                         src="@($"https://vem.smimaroc.com/Content/Documents/images/tiers/{SelectedStation.Photo}")" alt="Nom Photo" />
+                                }
+                                else
+                                {
+                                    <p>Aucune photo disponible pour ce nom.</p>
+                                }
+                            </div>
+                            <div class="tab-pane" id="city">
+                                <p><strong>Ville:</strong> @(SelectedStation?.Ville ?? "Non disponible")</p>
+                            </div>
+                            <div class="tab-pane active" id="gps">
+                                @if (!string.IsNullOrEmpty(SelectedStation?.GPS))
+                                {
+                                    <iframe style="width: 100%; height: 300px; border: 0;"
+                                            frameborder="0"
+                                            src="https://www.google.com/maps?q=@SelectedStation.GPS&output=embed">
+                                    </iframe>
+                                }
+                                else
+                                {
+                                    <p>GPS non disponible.</p>
+                                }
+                            </div>
+                            <div class="tab-pane" id="region">
+                                <p><strong>Région:</strong> @(SelectedStation?.SecteurGeographique ?? "Non disponible")</p>
+                                @if (!string.IsNullOrEmpty(SelectedStation?.SecteurGeographique))
+                                {
+                                    var currentRegion = regionResponse?.Régions?.FirstOrDefault(r => r.SecteurGeographique == SelectedStation.SecteurGeographique);
+                                    if (currentRegion?.Photo != null)
+                                    {
+                                        <img style="width: 100%; height: 300px; border: 0;"
+                                             src="@($"https://vem.smimaroc.com/Content/Documents/images/tiers/{currentRegion.Photo}")" alt="Région Photo" />
+                                    }
+                                    else
+                                    {
+                                        <p>Aucune photo disponible pour la région sélectionnée.</p>
+                                    }
+                                }
+                            </div>
+                            <div class="tab-pane" id="code">
+                                <p><strong>Code:</strong> @(SelectedStation?.CodeTiers ?? "Non disponible")</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="alert-container">
+                    @if (showAlert && !string.IsNullOrEmpty(StatusMessage))
+                    {
+                        <div class="alert @StatusClass show">
+                            <span>@StatusMessage</span>
+                        </div>
+                    }
+                </div>
+
+
+                <!-- Buttons for capturing or choosing a photo -->
+                <div class="button-group">
+                    <button class="btn-take-photos" @onclick="TakePhoto" disabled="@isTakingPhotoLoading">
+                        @if (isTakingPhotoLoading)
+                        {
+                            <span>⏳</span> <!-- Loading spinner or icon -->
+                        }
+                        else
+                        {
+                            <span>📷</span>
+                        }
+                    </button>
+
+                    <button class="btn-choose-photo" @onclick="ChoosePhoto" disabled="@isChoosingPhotoLoading">
+                        @if (isChoosingPhotoLoading)
+                        {
+                            <span>⏳</span> <!-- Loading spinner or icon -->
+                        }
+                        else
+                        {
+                            <span>📁</span>
+                        }
+                    </button>
+
+                    <button class="btn-send-photos" @onclick="SendPhotos" disabled="@isSendingPhotosLoading">
+                        @if (isSendingPhotosLoading)
+                        {
+                            <span>⏳</span> <!-- Loading spinner or icon -->
+                        }
+                        else
+                        {
+                            <span>📤</span>
+                        }
+                    </button>
+                </div>
+
+
+                <!-- Photo gallery -->
+                <div class="photo-gallery">
+                    <h3 class="gallery-header">Photos pour @(SelectedStation?.RaisonSociale ?? "Station inconnue")</h3>
+                    @if (SelectedStation != null && !string.IsNullOrEmpty(SelectedStation.CodeTiers) &&
+                   StationPhotosDictionary.ContainsKey(SelectedStation.CodeTiers))
+                    {
+                        var photos = StationPhotosDictionary[SelectedStation.CodeTiers];
+                        if (photos?.Any() == true)
+                        {
+                            <ul class="photo-list">
+                                @foreach (var photo in photos)
+                                {
+                                    <li class="photo-item">
+                                        <img src="data:image/jpeg;base64,@photo" alt="Photo de la Station" class="photo-thumbnail" />
+                                        <button class="btn-remove-photo" @onclick="() => RemovePhoto(photo)">❌</button>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    }
+                    else
+                    {
+                        <p class="no-photos">Aucune photo capturée ou sélectionnée pour cette station.</p>
+                    }
+                </div>
+
+            </div>
+        }
+
+
+
+    }
+    else
+    {
+        <div class="page-container">
+
+            <div class="page-header"></div>
+            <section class="region-container">
+                @if (regionResponse?.Régions != null && regionResponse.Régions.Any(r => r.SecteurGeographique != "Non Affectée"))
+                {
+                    foreach (var region in regionResponse.Régions.Where(r => r.SecteurGeographique != "Non Affectée"))
+                    {
+                        <div class="card">
+                            <div class="card-header">
+                                @region.SecteurGeographique
+                            </div>
+                            <img src="@($"https://vem.smimaroc.com/Content/Documents/images/tiers/{region.Photo}")"
+                                 alt="Region Photo"
+                                 class="station-photo"
+                                 onerror="this.src='https://example.com/default-region.jpg';" />
+                            <div class="card-body">
+                                <button class="btn_stt" @onclick="() => FetchStations(region.SecteurGeographique ?? string.Empty)">
+                                    Stations
+                                </button>
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <p class="alertregion">No regions available. Please refresh the page or contact support.</p>
+                }
+            </section>
+        </div>
+
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger">
+            <strong>Error:</strong> @errorMessage
+        </div>
+    }
+</div>
+
+
+<script>
+    function switchTab(tabId) {
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.classList.remove('active');
+        });
+
+        document.querySelectorAll('.tab-pane').forEach(pane => {
+            pane.classList.remove('active');
+        });
+
+        document.querySelector(`.tab[data-tab="${tabId}"]`).classList.add('active');
+        document.getElementById(tabId).classList.add('active');
+    }
+
+    // Set "gps" tab as active on page load
+    window.onload = function () {
+        switchTab('gps');
+    }
+</script>
+<script>
+        function showAlert() {
+        var alert = document.querySelector(".alert");
+        if (alert) {
+            alert.classList.add("show");
+            setTimeout(function() {
+                alert.classList.remove("show");
+            }, 3000); // Alert will hide after 3 seconds
+        }
+    }
+
+</script>
+
+@code {
+    private Dictionary<string, List<string?>> StationPhotosDictionary = new Dictionary<string, List<string?>>();
+    private List<string?> StationPhotos = new List<string?>(); // Allow nullable strings
+    private Station? SelectedStation;
+    private List<Station>? stations;
+    private bool showStations = false;
+    private bool isLoading = false;
+    private RegionResponse? regionResponse;
+    private string? selectedRegion;
+    private string? errorMessage;
+    private string StatusMessage { get; set; } = string.Empty;
+    private string StatusClass { get; set; } = string.Empty;
+    private string ActiveTab { get; set; } = "GPS";
+    private bool isChoosingPhotoLoading = false;
+    private bool isTakingPhotoLoading = false;
+    private bool isSendingPhotosLoading = false;
+    private bool showAlert = false; // Flag to control visibility of the alert
+
+    // Method to show the alert with the desired message
+    private async void ShowAlert()
+    {
+        showAlert = true;  // Set the flag to true to display the alert
+        StateHasChanged();  // Re-render to show the alert
+
+        // Automatically hide the alert after 3 seconds
+        await Task.Delay(3000);
+
+        showAlert = false;  // Set the flag to false to hide the alert
+        StateHasChanged();  // Re-render to hide the alert
+    }
+
+    private async Task SendPhotos()
+    {
+        try
+        {
+            isSendingPhotosLoading = true; // Set loading to true
+            StateHasChanged(); // Re-render UI to show loading state
+
+            // Validate the selected station and associated photos
+            if (SelectedStation == null || string.IsNullOrEmpty(SelectedStation.CodeTiers))
+            {
+                StatusMessage = "Error: No station selected.";
+                StatusClass = "text-danger";
+                return;
+            }
+
+            if (!StationPhotosDictionary.TryGetValue(SelectedStation.CodeTiers, out var photosToSend) || photosToSend == null || !photosToSend.Any())
+            {
+                StatusMessage = "Error: No photos available to send for the selected station.";
+                StatusClass = "text-danger";
+                return;
+            }
+
+            int successCounter = 0;
+            int totalPhotos = photosToSend.Count;
+
+            foreach (var photo in photosToSend)
+            {
+                if (string.IsNullOrEmpty(photo))
+                {
+                    Console.WriteLine("Skipping null or empty photo.");
+                    continue;
+                }
+
+                try
+                {
+                    // Validate the base64 string
+                    byte[] photoBytes;
+                    try
+                    {
+                        photoBytes = Convert.FromBase64String(photo);
+                    }
+                    catch (FormatException)
+                    {
+                        Console.WriteLine("Invalid base64 string. Skipping photo.");
+                        continue;
+                    }
+
+                    // Prepare HTTP request
+                    using var content = new MultipartFormDataContent();
+
+                    // Add photo as file content
+                    var fileContent = new ByteArrayContent(photoBytes);
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/jpeg"); // Adjust type if needed
+                    content.Add(fileContent, "photos", "photo.jpg"); // Match server keys
+
+                    // Add station CodeTiers
+                    content.Add(new StringContent(SelectedStation.CodeTiers), "codeTiers");
+
+                    // Send HTTP request
+                    using var requestMessage = new HttpRequestMessage(HttpMethod.Post, "https://my.yomasoft.com/api/UniversalData/universal-upload")
+                        {
+                            Content = content
+                        };
+                    requestMessage.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", "your_access_token_here");
+
+                    using HttpResponseMessage response = await HttpClient.SendAsync(requestMessage);
+
+                    if (response.IsSuccessStatusCode)
+                    {
+                        successCounter++;
+                        Console.WriteLine($"Photo uploaded successfully. ({successCounter}/{totalPhotos})");
+                    }
+                    else
+                    {
+                        string responseContent = await response.Content.ReadAsStringAsync();
+                        Console.WriteLine($"Failed to upload photo. Response: {responseContent}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Unexpected error while uploading photo: {ex.Message}");
+                }
+            }
+
+            // Update status message
+            StatusMessage = successCounter == totalPhotos
+                ? "All photos uploaded successfully."
+                : $"Upload completed with errors. {successCounter}/{totalPhotos} photos uploaded successfully.";
+            StatusClass = successCounter == totalPhotos ? "text-success" : "text-warning";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Unexpected error: {ex.Message}");
+        }
+        finally
+        {
+            isSendingPhotosLoading = false; // Reset loading flag
+            StateHasChanged(); // Re-render UI to remove loading state
+        }
+    }
+
+    public class JsonDateTimeConverter : JsonConverter<DateTime>
+    {
+        // Read method to deserialize DateTime from JSON
+        public override DateTime Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        {
+            // Allow dateString to be nullable (string? in case it's null)
+            string? dateString = reader.GetString();
+
+            // Handle null or empty date string safely
+            if (string.IsNullOrEmpty(dateString))
+            {
+                return DateTime.MinValue;  // Return a default value when the string is null or empty
+            }
+
+            // Attempt to parse the date string
+            if (DateTime.TryParse(dateString, out DateTime result))
+            {
+                return result;
+            }
+
+            // If parsing fails, return a default value (could be DateTime.MinValue or throw an exception depending on your needs)
+            return DateTime.MinValue;
+        }
+
+        // Write method to serialize DateTime to JSON
+        public override void Write(Utf8JsonWriter writer, DateTime value, JsonSerializerOptions options)
+        {
+            // Handle null DateTime values gracefully
+            if (value == DateTime.MinValue)
+            {
+                writer.WriteStringValue(string.Empty);  // Empty string for null DateTime equivalent
+            }
+            else
+            {
+                writer.WriteStringValue(value.ToString("yyyy-MM-ddTHH:mm:ssZ")); // Standard ISO 8601 format
+            }
+        }
+    }
+    // Method to load and display saved photos
+
+    // Method to choose a photo from the gallery
+    private async Task ChoosePhoto()
+    {
+        try
+        {
+            isChoosingPhotoLoading = true; // Set loading to true
+            StateHasChanged(); // Re-render UI to show loading state
+
+            if (SelectedStation == null || string.IsNullOrEmpty(SelectedStation.CodeTiers))
+            {
+                StatusMessage = "No station selected.";
+                StatusClass = "text-danger";
+                ShowAlert();  // Correct usage of ShowAlert
+                return;
+            }
+
+            var photos = await FilePicker.PickMultipleAsync(new PickOptions
+                {
+                    PickerTitle = "Select photos",
+                    FileTypes = FilePickerFileType.Images
+                });
+
+            if (photos != null && photos.Any())
+            {
+                foreach (var photo in photos)
+                {
+                    string sanitizedSecteurGeographique = SelectedStation.SecteurGeographique?.Replace("/", "_") ?? "Unknown";
+                    string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                    string photoName = $"myDoc.2025-Q4.{sanitizedSecteurGeographique}.{SelectedStation.RaisonSociale}.{timestamp}.{Guid.NewGuid()}.{SelectedStation.CodeTiers}.jpg";
+
+                    using var stream = await photo.OpenReadAsync();
+                    var memoryStream = new MemoryStream();
+                    await stream.CopyToAsync(memoryStream);
+                    string base64String = Convert.ToBase64String(memoryStream.ToArray());
+
+                    if (!StationPhotosDictionary.ContainsKey(SelectedStation.CodeTiers))
+                    {
+                        StationPhotosDictionary[SelectedStation.CodeTiers] = new List<string?>();
+                    }
+
+                    StationPhotosDictionary[SelectedStation.CodeTiers].Add(base64String);
+                }
+
+                StatusMessage = $"Photo added: {StationPhotosDictionary[SelectedStation.CodeTiers].Count} photo(s) added.";
+                StatusClass = "text-success";
+                ShowAlert();  // Correct usage of ShowAlert
+            }
+            else
+            {
+                StatusMessage = "No photos selected.";
+                StatusClass = "text-warning";
+                ShowAlert();  // Correct usage of ShowAlert
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error: {ex.Message}";
+            StatusClass = "text-danger";
+            ShowAlert();  // Correct usage of ShowAlert
+        }
+        finally
+        {
+            isChoosingPhotoLoading = false; // Reset loading flag
+            StateHasChanged(); // Re-render UI to remove loading state
+        }
+    }
+
+    private async Task TakePhoto()
+    {
+        try
+        {
+            isTakingPhotoLoading = true;
+            StateHasChanged();
+
+            if (SelectedStation == null || string.IsNullOrEmpty(SelectedStation.CodeTiers))
+            {
+                StatusMessage = "No station selected.";
+                StatusClass = "text-danger";
+                ShowAlert(); // Call ShowAlert to display the status message
+                return;
+            }
+
+            var photo = await MediaPicker.CapturePhotoAsync();
+
+            if (photo != null)
+            {
+                // Process the photo (convert, save, etc.)
+                string sanitizedSecteurGeographique = SelectedStation.SecteurGeographique?.Replace("/", "_") ?? "Unknown";
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string photoName = $"myDoc.2025-Q4.{sanitizedSecteurGeographique}.{SelectedStation.RaisonSociale}.{timestamp}.{Guid.NewGuid()}.{SelectedStation.CodeTiers}.jpg";
+
+                using var stream = await photo.OpenReadAsync();
+                var memoryStream = new MemoryStream();
+                await stream.CopyToAsync(memoryStream);
+                string base64 = Convert.ToBase64String(memoryStream.ToArray());
+
+                if (!StationPhotosDictionary.ContainsKey(SelectedStation.CodeTiers))
+                {
+                    StationPhotosDictionary[SelectedStation.CodeTiers] = new List<string?>();
+                }
+
+                StationPhotosDictionary[SelectedStation.CodeTiers].Add(base64);
+
+                StatusMessage = $"Photo added: {StationPhotosDictionary[SelectedStation.CodeTiers].Count} photo(s) added.";
+                StatusClass = "text-success";
+                ShowAlert(); // Call ShowAlert to display the status message
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error: {ex.Message}";
+            StatusClass = "text-danger";
+            ShowAlert(); // Call ShowAlert to display the status message
+        }
+        finally
+        {
+            isTakingPhotoLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // Remove a photo from the gallery
+    private async Task RemovePhoto(string? photoBase64)
+    {
+        if (string.IsNullOrEmpty(photoBase64)) // Check for null or empty
+        {
+            Console.WriteLine("Error: photoBase64 is null or empty.");
+            return;
+        }
+
+        if (SelectedStation != null && !string.IsNullOrEmpty(SelectedStation.CodeTiers) &&
+            StationPhotosDictionary.ContainsKey(SelectedStation.CodeTiers ?? string.Empty))
+        {
+            // Remove the selected photo from the dictionary for the selected station
+            StationPhotosDictionary[SelectedStation.CodeTiers ?? string.Empty].Remove(photoBase64);
+
+            // Optionally, remove the photo from the local storage
+            await JSRuntime.InvokeVoidAsync("localStorage.removeItem", $"{SelectedStation.CodeTiers}_photo");
+
+            StateHasChanged(); // Ensure the UI updates
+        }
+        else
+        {
+            Console.WriteLine("Error: SelectedStation or CodeTiers is null, or no photos found for this station.");
+        }
+    }
+
+    // Fetch ShowStationDetails from server
+    private void ShowStationDetails(Station station)
+    {
+        SelectedStation = station;
+    }
+    // Premier execution
+
+    // Fetch Data Regions from server
+    private async Task FetchRegions()
+    {
+        isLoading = true; // Start loading
+        var paramClient = "SMI";
+        var paramAction = "Universal Data Read (JSON)";
+        var paramValeur = "Liste des Régions";
+
+        var url = "https://my.yomasoft.com/api/UniversalData";
+
+        var formData = new MultipartFormDataContent();
+        formData.Add(new StringContent(paramClient), "Params-Client");
+        formData.Add(new StringContent(paramAction), "Params-Action");
+        formData.Add(new StringContent(paramValeur), "Params-Valeur");
+
+        try
+        {
+            var response = await Http.PostAsync(url, formData);
+
+            if (response.IsSuccessStatusCode)
+            {
+                regionResponse = await response.Content.ReadFromJsonAsync<RegionResponse>();
+                Console.WriteLine($"Fetched Regions: {regionResponse?.Régions?.Count}");
+            }
+            else
+            {
+                var errorDetails = await response.Content.ReadAsStringAsync();
+                errorMessage = $"Erreur API: {response.StatusCode} - {response.ReasonPhrase} - {errorDetails}";
+                Console.WriteLine($"Error details: {errorDetails}");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Une erreur s'est produite: {ex.Message}";
+            Console.WriteLine($"API Request Error: {ex.Message}");
+        }
+        finally
+        {
+            isLoading = false; // Stop loading even if an error occurs
+        }
+    }
+    // Fetch Data Stations from server
+    private async Task FetchStations(string secteurGeographique)
+    {
+        if (string.IsNullOrEmpty(secteurGeographique))
+        {
+            errorMessage = "Secteur géographique is null or empty.";
+            return;
+        }
+
+        selectedRegion = secteurGeographique; // Set the selected region
+        showStations = true;
+
+        var url = "https://my.yomasoft.com/api/UniversalData";
+        var formData = new MultipartFormDataContent
+    {
+        { new StringContent("SMI"), "Params-Client" },
+        { new StringContent("Universal Data Read (JSON)"), "Params-Action" },
+        { new StringContent("Liste des Stations / Région"), "Params-Valeur" },
+        { new StringContent(secteurGeographique), "###Champ.Filtre###Secteur géographique" }
+    };
+
+        try
+        {
+            var response = await Http.PostAsync(url, formData);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var jsonResponse = await response.Content.ReadAsStringAsync();
+                Console.WriteLine($"API Response for '{secteurGeographique}': {jsonResponse}");
+
+                // Deserialize the response
+                var stationResponse = JsonSerializer.Deserialize<StationResponse>(jsonResponse);
+                stations = stationResponse?.Stations ?? new List<Station>();  // If no stations are found, fallback to an empty list
+
+                // Filter only active stations
+                stations = stations?.Where(station => station.Active).ToList();
+
+                Console.WriteLine($"Stations found: {stations?.Count}");
+            }
+            else
+            {
+                var errorDetails = await response.Content.ReadAsStringAsync();
+                errorMessage = $"API Error: {response.StatusCode} - {response.ReasonPhrase}: {errorDetails}";
+                Console.WriteLine(errorMessage);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"An error occurred: {ex.Message}";
+            Console.WriteLine($"FetchStations Error: {ex.Message}");
+        }
+
+        StateHasChanged(); // Update the UI
+    }
+
+
+
+    // Load photos from the database and group them by station
+    private async Task LoadPhotos()
+    {
+        try
+        {
+            // Retrieve all saved photos from the database asynchronously
+            var savedPhotos = await Task.Run(() => DbService.GetPhotos()); // Ensure GetPhotos is async or offload it to a background thread
+            StationPhotos = savedPhotos.Select(p => p.Base64).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading photos: {ex.Message}");
+        }
+    }
+
+    // Load the last saved photo for the selected station from local storage
+    private async Task LoadSavedPhoto()
+    {
+        try
+        {
+            // Retrieve the last saved photo for the selected station from local storage
+            var savedPhoto = await JSRuntime.InvokeAsync<string>("localStorage.getItem", $"{SelectedStation?.CodeTiers}_photo");
+
+            if (!string.IsNullOrEmpty(savedPhoto) && SelectedStation != null && !string.IsNullOrEmpty(SelectedStation.CodeTiers))
+            {
+                // If a saved photo exists, add it to the dictionary for the selected station
+                if (!StationPhotosDictionary.ContainsKey(SelectedStation.CodeTiers))
+                {
+                    StationPhotosDictionary[SelectedStation.CodeTiers] = new List<string?>();
+                }
+
+                StationPhotosDictionary[SelectedStation.CodeTiers].Add(savedPhoto);
+                StateHasChanged(); // Update the UI to display the photo
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading saved photo: {ex.Message}");
+        }
+    }
+
+    private async Task LoadStationData()
+    {
+        // Simulate a delay for loading (Replace this with your actual API call)
+        await Task.Delay(1000);
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        isLoading = true; // Set loading to true before fetching data
+        await FetchRegions(); // Fetch regions
+        await LoadStationData(); // Simulate data fetching
+
+        isLoading = false; // Set loading to false once data is fetched
+        await LoadPhotos(); // Load the photos asynchronously
+        await LoadSavedPhoto(); // Load the last captured photo for the selected station
+    }
+
+}
+<style>
+    .AllApp {
+        padding: 1rem;
+    }
+
+    .loading-spinner {
+        text-align: center;
+        padding: 2rem;
+        font-size: 1.25rem;
+    }
+
+    .page-container {
+        max-width: 1200px;
+        margin: auto;
+    }
+
+    .region-container,
+    .card-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1rem;
+    }
+
+    .card {
+        background-color: var(--bs-light);
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.5rem;
+        overflow: hidden;
+        box-shadow: 0 0.25rem 0.75rem rgba(0,0,0,0.05);
+    }
+
+    .card-header {
+        background-color: var(--bs-primary);
+        color: #fff;
+        padding: 0.75rem 1rem;
+        font-weight: 600;
+    }
+
+    .card-body {
+        padding: 1rem;
+        text-align: center;
+    }
+
+    .station-photo {
+        width: 100%;
+        height: 200px;
+        object-fit: cover;
+    }
+
+    .btn_stt, .btn_back {
+        margin-top: 0.5rem;
+        padding: 0.5rem 1.25rem;
+        font-weight: 500;
+        border-radius: 0.375rem;
+        border: none;
+        background-color: var(--bs-primary);
+        color: white;
+    }
+
+    .btn_back {
+        background-color: var(--bs-secondary);
+        margin-bottom: 1rem;
+    }
+
+    .CapturePage {
+        padding: 1rem;
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.5rem;
+        background: var(--bs-body-bg);
+        margin-top: 1rem;
+    }
+
+    .selected-station-details {
+        margin-bottom: 2rem;
+    }
+
+    .station-header {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .tabs {
+        margin-bottom: 1rem;
+    }
+
+    .tab-list {
+        list-style: none;
+        display: flex;
+        gap: 1rem;
+        padding-left: 0;
+        margin-bottom: 0.5rem;
+    }
+
+    .tab {
+        cursor: pointer;
+        padding: 0.5rem 1rem;
+        background-color: var(--bs-light);
+        border-radius: 0.375rem;
+        transition: background-color 0.3s ease;
+    }
+
+        .tab:hover {
+            background-color: var(--bs-secondary-bg);
+        }
+
+        .tab.active {
+            background-color: var(--bs-primary);
+            color: white;
+        }
+
+    .tab-content {
+        background-color: var(--bs-body-bg);
+        padding: 1rem;
+        border: 1px solid var(--bs-border-color);
+        border-radius: 0.375rem;
+    }
+
+    .alert-container {
+        margin: 1rem 0;
+    }
+
+    .alert.show {
+        display: block;
+    }
+
+    .button-group {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 2rem;
+    }
+
+    .btn-take-photos,
+    .btn-choose-photo,
+    .btn-send-photos {
+        font-size: 1.5rem;
+        padding: 0.5rem 1rem;
+        border-radius: 0.5rem;
+        background-color: var(--bs-info);
+        color: white;
+        border: none;
+        transition: background-color 0.3s ease;
+    }
+
+    .btn-send-photos {
+        background-color: var(--bs-success);
+    }
+
+    .btn-remove-photo {
+        background: transparent;
+        border: none;
+        font-size: 1.25rem;
+        cursor: pointer;
+        color: var(--bs-danger);
+    }
+
+    .photo-gallery {
+        padding: 1rem;
+        background-color: var(--bs-light);
+        border-radius: 0.5rem;
+    }
+
+    .gallery-header {
+        font-size: 1.25rem;
+        margin-bottom: 1rem;
+    }
+
+    .photo-list {
+        list-style: none;
+        padding-left: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .photo-item {
+        position: relative;
+        text-align: center;
+    }
+
+    .photo-thumbnail {
+        width: 100%;
+        height: 100px;
+        object-fit: cover;
+        border-radius: 0.375rem;
+    }
+
+    .alertregion {
+        color: var(--bs-danger);
+        text-align: center;
+        font-weight: bold;
+        margin-top: 1rem;
+    }
+
+</style>

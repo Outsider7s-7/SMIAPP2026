@@ -1,0 +1,235 @@
+﻿@inherits LayoutComponentBase
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<!-- Bootstrap & Icons -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" />
+
+<div class="layout-container">
+    <!-- Top Bar -->
+    <header class="top-bar d-flex justify-content-between align-items-center px-3 py-2 shadow-sm">
+        <div class="logo d-flex align-items-center gap-2">
+            <i class="bi bi-fuel-pump-fill fs-4 text-primary"></i>
+            <span class="fs-5 fw-bold">SmiApp</span>
+        </div>
+
+        <div class="search-wrapper d-none d-md-block flex-grow-1 mx-4">
+            <input type="text" class="form-control" placeholder="Search stations..." />
+        </div>
+
+        <div class="top-actions d-flex align-items-center gap-3">
+            <button class="btn position-relative" title="Notifications">
+                <i class="bi bi-bell fs-5"></i>
+                <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">3</span>
+            </button>
+            <button class="btn" title="Profile">
+                <i class="bi bi-person-circle fs-5"></i>
+            </button>
+        </div>
+
+        <!-- Dark Mode Switch -->
+        <div class="form-check form-switch ms-3">
+            <input class="form-check-input" type="checkbox" id="themeSwitch" @onchange="ToggleTheme">
+            <label class="form-check-label text-nowrap" for="themeSwitch">Dark Mode</label>
+        </div>
+    </header>
+
+    <!-- Sidebar (Desktop) -->
+    <aside class="sidebar d-none d-md-block p-3">
+        <NavMenu />
+    </aside>
+
+    <!-- Mobile Sidebar -->
+    <div class="sidebar-scroll-mobile d-md-none" style="display:none;" id="mobileSidebar">
+        <NavMenu />
+    </div>
+
+    <!-- Main Content -->
+    <!-- Main Content -->
+    <main class="main-content px-3 py-4 position-relative">
+        @if (isLoadingMainContent)
+        {
+            <div class="loading-overlay d-flex justify-content-center align-items-center">
+                <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+        }
+
+        <div class="container-fluid" style="@((isLoadingMainContent ? "opacity: 0.4;" : ""))">
+            @Body
+        </div>
+    </main>
+
+
+    <!-- Chat Sidebar -->
+    <aside class="chat-sidebar d-none d-md-block p-3">
+        <h5>Chat</h5>
+        <div class="chat-content text-muted small">
+            <p>No messages yet.</p>
+        </div>
+    </aside>
+
+    <!-- Bottom Navigation (Mobile) -->
+    <nav class="bottom-navbar d-md-none fixed-bottom shadow-sm">
+        <div class="d-flex justify-content-around py-2">
+            <a href="/" class="text-center text-decoration-none">
+                <i class="bi bi-house fs-5"></i>
+                <div class="small">Home</div>
+            </a>
+            <a href="/" class="text-center text-decoration-none">
+                <i class="bi bi-geo-alt fs-5"></i>
+                <div class="small">Stations</div>
+            </a>
+            <a href="/" class="text-center text-decoration-none">
+                <i class="bi bi-bell fs-5"></i>
+                <div class="small">Alerts</div>
+            </a>
+            <a href="/" class="text-center text-decoration-none">
+                <i class="bi bi-person fs-5"></i>
+                <div class="small">Profile</div>
+            </a>
+        </div>
+    </nav>
+</div>
+
+<!-- Theme Toggle Script -->
+<script>
+    window.setThemeMode = function (mode) {
+        const target = document.body || document.documentElement;
+        target.setAttribute("data-bs-theme", mode);
+    };
+</script>
+@code {
+    private bool isLoadingMainContent = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Simulate delay for demo
+            await Task.Delay(1000); // Replace with real loading logic
+            isLoadingMainContent = false;
+            StateHasChanged();
+        }
+    }
+}
+
+<style>
+    .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 999;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.6);
+        backdrop-filter: blur(2px);
+        border-radius: 0.5rem;
+    }
+
+    [data-bs-theme="dark"] .loading-overlay {
+        background-color: rgba(0, 0, 0, 0.4);
+    }
+
+    body, .layout-container {
+        background-color: var(--bs-body-bg);
+        color: var(--bs-body-color);
+    }
+
+    .top-bar {
+        background-color: var(--bs-body-bg);
+        color: var(--bs-body-color);
+        z-index: 1030;
+    }
+
+    .sidebar,
+    .chat-sidebar {
+        width: 240px;
+        position: fixed;
+        top: 56px;
+        bottom: 0;
+        overflow-y: auto;
+        background-color: var(--bs-tertiary-bg);
+        border-color: var(--bs-border-color);
+    }
+
+    .sidebar {
+        left: 0;
+        border-right: 1px solid var(--bs-border-color);
+    }
+
+    .chat-sidebar {
+        right: 0;
+        border-left: 1px solid var(--bs-border-color);
+    }
+
+    .main-content {
+        margin-top: 56px;
+        margin-left: 0;
+        margin-right: 0;
+    }
+
+    @@media (min-width: 768px) {
+        .main-content
+
+    {
+        margin-left: 240px;
+        margin-right: 240px;
+    }
+
+    }
+
+    .bottom-navbar {
+        height: 60px;
+        background-color: var(--bs-body-bg);
+        border-top: 1px solid var(--bs-border-color);
+    }
+
+        .bottom-navbar a {
+            color: var(--bs-body-color);
+        }
+
+    @@media (max-width: 768px) {
+        .sidebar-scroll-mobile
+
+    {
+        position: fixed;
+        top: 56px;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        overflow-y: auto;
+        background-color: var(--bs-tertiary-bg);
+        z-index: 1050;
+        padding: 1rem;
+    }
+
+    }
+
+    .form-control {
+        background-color: var(--bs-body-bg);
+        color: var(--bs-body-color);
+        border-color: var(--bs-border-color);
+    }
+
+        .form-control:focus {
+            border-color: var(--bs-primary);
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+        }
+
+    .form-check-input:checked {
+        background-color: var(--bs-primary);
+        border-color: var(--bs-primary);
+    }
+</style>
+
+@code {
+    private async Task ToggleTheme(ChangeEventArgs e)
+    {
+        bool isDark = (bool)e.Value;
+        await JS.InvokeVoidAsync("setThemeMode", isDark ? "dark" : "light");
+    }
+}
