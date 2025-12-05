@@ -25,7 +25,6 @@ namespace SMIAPP2026
             {
                 var client = new HttpClient
                 {
-                    BaseAddress = new Uri("https://my.yomasoft.com/api/UniversalData") // Assurez-vous de bien définir une adresse de base
                 };
                 return client;
             });
